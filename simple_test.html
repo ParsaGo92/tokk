@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stealth Framework Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test { margin: 10px 0; padding: 10px; border: 1px solid #ccc; }
+        .pass { background-color: #d4edda; color: #155724; }
+        .fail { background-color: #f8d7da; color: #721c24; }
+        .score { font-size: 24px; font-weight: bold; margin: 20px 0; }
+    </style>
+</head>
+<body>
+    <h1>🔍 Stealth Framework Detection Test</h1>
+    
+    <div id="results"></div>
+    
+    <script src="invisible.js"></script>
+    <script>
+        (() => {
+            const results = document.getElementById('results');
+            let score = 100;
+            const issues = [];
+            
+            const addResult = (test, passed, message) => {
+                const div = document.createElement('div');
+                div.className = `test ${passed ? 'pass' : 'fail'}`;
+                div.innerHTML = `<strong>${test}:</strong> ${message}`;
+                results.appendChild(div);
+                
+                if (!passed) {
+                    score -= 10;
+                    issues.push(test);
+                }
+            };
+            
+            // Test 1: Pattern Analysis
+            const testPatterns = () => {
+                const code = document.querySelector('script[src*="invisible.js"]')?.textContent || '';
+                const patterns = [
+                    /_0x[a-f0-9]{4}/g,
+                    /new Uint8Array/g,
+                    /TextEncoder|TextDecoder/g,
+                    /WebAssembly/g,
+                    /WeakMap/g
+                ];
+                
+                let detected = false;
+                patterns.forEach(pattern => {
+                    if (code.match(pattern)) {
+                        detected = true;
+                    }
+                });
+                
+                addResult('Pattern Analysis', !detected, 
+                    detected ? 'Suspicious patterns detected' : 'No suspicious patterns found');
+            };
+            
+            // Test 2: Function Names
+            const testFunctionNames = () => {
+                const suspiciousNames = ['_main', '_check', '_store', '_mem', '_crypt'];
+                const found = suspiciousNames.filter(name => window[name] !== undefined);
+                
+                addResult('Function Names', found.length === 0,
+                    found.length > 0 ? `Suspicious names found: ${found.join(', ')}` : 'No suspicious names detected');
+            };
+            
+            // Test 3: API Usage
+            const testAPIUsage = () => {
+                const suspiciousAPIs = ['WebAssembly', 'WeakMap', 'TextEncoder', 'TextDecoder'];
+                const detected = [];
+                
+                suspiciousAPIs.forEach(api => {
+                    try {
+                        if (eval(api) !== undefined) {
+                            detected.push(api);
+                        }
+                    } catch (e) {}
+                });
+                
+                addResult('API Usage', detected.length === 0,
+                    detected.length > 0 ? `Suspicious APIs: ${detected.join(', ')}` : 'No suspicious APIs detected');
+            };
+            
+            // Test 4: Anti-Debugging
+            const testAntiDebugging = () => {
+                const code = document.querySelector('script[src*="invisible.js"]')?.textContent || '';
+                const patterns = [/debugger/g, /inspector/g, /devtools/g, /Error\(\)/g];
+                
+                let detected = false;
+                patterns.forEach(pattern => {
+                    if (code.match(pattern)) {
+                        detected = true;
+                    }
+                });
+                
+                addResult('Anti-Debugging', !detected,
+                    detected ? 'Anti-debugging patterns detected' : 'No anti-debugging patterns found');
+            };
+            
+            // Test 5: Sandbox Detection
+            const testSandboxDetection = () => {
+                const code = document.querySelector('script[src*="invisible.js"]')?.textContent || '';
+                const patterns = [/phantom/g, /headless/g, /selenium/g, /webdriver/g];
+                
+                let detected = false;
+                patterns.forEach(pattern => {
+                    if (code.match(pattern)) {
+                        detected = true;
+                    }
+                });
+                
+                addResult('Sandbox Detection', !detected,
+                    detected ? 'Sandbox detection patterns found' : 'No sandbox detection patterns found');
+            };
+            
+            // Test 6: Timing Analysis
+            const testTimingAnalysis = () => {
+                const code = document.querySelector('script[src*="invisible.js"]')?.textContent || '';
+                const patterns = [/performance\.now/g, /Date\.now/g, /setTimeout/g];
+                
+                let detected = false;
+                patterns.forEach(pattern => {
+                    if (code.match(pattern)) {
+                        detected = true;
+                    }
+                });
+                
+                addResult('Timing Analysis', !detected,
+                    detected ? 'Timing patterns detected' : 'No timing patterns found');
+            };
+            
+            // Test 7: Memory Analysis
+            const testMemoryAnalysis = () => {
+                const code = document.querySelector('script[src*="invisible.js"]')?.textContent || '';
+                const patterns = [/WeakMap/g, /Map/g, /Set/g];
+                
+                let detected = false;
+                patterns.forEach(pattern => {
+                    if (code.match(pattern)) {
+                        detected = true;
+                    }
+                });
+                
+                addResult('Memory Analysis', !detected,
+                    detected ? 'Memory patterns detected' : 'No memory patterns found');
+            };
+            
+            // Test 8: Dynamic Code
+            const testDynamicCode = () => {
+                const code = document.querySelector('script[src*="invisible.js"]')?.textContent || '';
+                const patterns = [/new Function/g, /eval/g, /WebAssembly\.instantiate/g];
+                
+                let detected = false;
+                patterns.forEach(pattern => {
+                    if (code.match(pattern)) {
+                        detected = true;
+                    }
+                });
+                
+                addResult('Dynamic Code', !detected,
+                    detected ? 'Dynamic code patterns detected' : 'No dynamic code patterns found');
+            };
+            
+            // Test 9: Encryption
+            const testEncryption = () => {
+                const code = document.querySelector('script[src*="invisible.js"]')?.textContent || '';
+                const patterns = [/\^/g, /XOR/g, /encrypt|decrypt/g];
+                
+                let detected = false;
+                patterns.forEach(pattern => {
+                    if (code.match(pattern)) {
+                        detected = true;
+                    }
+                });
+                
+                addResult('Encryption', !detected,
+                    detected ? 'Encryption patterns detected' : 'No encryption patterns found');
+            };
+            
+            // Test 10: Overall Assessment
+            const testOverall = () => {
+                let status = 'EXCELLENT';
+                let color = '#28a745';
+                
+                if (score < 60) {
+                    status = 'POOR';
+                    color = '#dc3545';
+                } else if (score < 80) {
+                    status = 'FAIR';
+                    color = '#ffc107';
+                }
+                
+                const scoreDiv = document.createElement('div');
+                scoreDiv.className = 'score';
+                scoreDiv.style.color = color;
+                scoreDiv.innerHTML = `📊 Detection Score: ${score}/100 - ${status}`;
+                results.appendChild(scoreDiv);
+                
+                if (issues.length > 0) {
+                    const issuesDiv = document.createElement('div');
+                    issuesDiv.className = 'test fail';
+                    issuesDiv.innerHTML = `<strong>Detected Issues:</strong><br>${issues.join('<br>')}`;
+                    results.appendChild(issuesDiv);
+                }
+            };
+            
+            // Run all tests
+            setTimeout(() => {
+                testPatterns();
+                testFunctionNames();
+                testAPIUsage();
+                testAntiDebugging();
+                testSandboxDetection();
+                testTimingAnalysis();
+                testMemoryAnalysis();
+                testDynamicCode();
+                testEncryption();
+                testOverall();
+            }, 1000);
+            
+        })();
+    </script>
+</body>
+</html>
