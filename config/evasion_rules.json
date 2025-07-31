@@ -1,0 +1,333 @@
+{
+  "waf_bypass": {
+    "modsecurity": {
+      "techniques": [
+        "case_variation",
+        "null_byte_injection",
+        "double_encoding",
+        "unicode_bypass",
+        "comment_injection",
+        "whitespace_manipulation",
+        "case_switching",
+        "hex_encoding",
+        "octal_encoding",
+        "url_encoding"
+      ],
+      "patterns": {
+        "sql_injection": [
+          "UnIoN/**/SeLeCt",
+          "UNI/**/ON/**/SELECT",
+          "UNI%00ON%00SELECT",
+          "UNI%u006fN%u0053ELECT",
+          "UNI%u006fN%u0053ELECT",
+          "UNI%u006fN%u0053ELECT",
+          "UNI%u006fN%u0053ELECT",
+          "UNI%u006fN%u0053ELECT",
+          "UNI%u006fN%u0053ELECT",
+          "UNI%u006fN%u0053ELECT"
+        ],
+        "xss": [
+          "<ScRiPt>alert('XSS')</ScRiPt>",
+          "<sCrIpT>alert('XSS')</sCrIpT>",
+          "<ScRiPt>alert('XSS')</ScRiPt>",
+          "<sCrIpT>alert('XSS')</sCrIpT>",
+          "<ScRiPt>alert('XSS')</ScRiPt>",
+          "<sCrIpT>alert('XSS')</sCrIpT>",
+          "<ScRiPt>alert('XSS')</ScRiPt>",
+          "<sCrIpT>alert('XSS')</sCrIpT>",
+          "<ScRiPt>alert('XSS')</ScRiPt>",
+          "<sCrIpT>alert('XSS')</sCrIpT>"
+        ],
+        "file_upload": [
+          "file.php%00.jpg",
+          "file.php%u002e%u006a%u0070%u0067",
+          "file.php%u002e%u006a%u0070%u0067",
+          "file.php%u002e%u006a%u0070%u0067",
+          "file.php%u002e%u006a%u0070%u0067",
+          "file.php%u002e%u006a%u0070%u0067",
+          "file.php%u002e%u006a%u0070%u0067",
+          "file.php%u002e%u006a%u0070%u0067",
+          "file.php%u002e%u006a%u0070%u0067",
+          "file.php%u002e%u006a%u0070%u0067"
+        ]
+      }
+    },
+    "cloudflare": {
+      "techniques": [
+        "user_agent_rotation",
+        "ip_rotation",
+        "request_timing",
+        "header_manipulation",
+        "cookie_manipulation",
+        "referer_spoofing",
+        "accept_language_spoofing",
+        "accept_encoding_manipulation",
+        "connection_manipulation",
+        "cache_control_manipulation"
+      ],
+      "patterns": {
+        "user_agents": [
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+          "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0",
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:89.0) Gecko/20100101 Firefox/89.0",
+          "Mozilla/5.0 (X11; Linux x86_64; rv:89.0) Gecko/20100101 Firefox/89.0",
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Edge/91.0.864.59",
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.1 Safari/605.1.15",
+          "Mozilla/5.0 (compatible; MSIE 11.0; Windows NT 10.0; Trident/7.0)",
+          "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)"
+        ],
+        "headers": {
+          "Accept": [
+            "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+            "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9"
+          ],
+          "Accept-Language": [
+            "en-US,en;q=0.9",
+            "en-GB,en;q=0.9",
+            "en-CA,en;q=0.9",
+            "en-AU,en;q=0.9",
+            "de-DE,de;q=0.9,en;q=0.8",
+            "fr-FR,fr;q=0.9,en;q=0.8",
+            "es-ES,es;q=0.9,en;q=0.8",
+            "it-IT,it;q=0.9,en;q=0.8",
+            "pt-BR,pt;q=0.9,en;q=0.8",
+            "ru-RU,ru;q=0.9,en;q=0.8"
+          ],
+          "Accept-Encoding": [
+            "gzip, deflate, br",
+            "gzip, deflate",
+            "gzip, deflate, br, zstd",
+            "gzip, deflate, br, compress",
+            "gzip, deflate, br, identity"
+          ],
+          "Connection": [
+            "keep-alive",
+            "close",
+            "upgrade"
+          ],
+          "Cache-Control": [
+            "no-cache",
+            "max-age=0",
+            "no-store",
+            "must-revalidate",
+            "public"
+          ]
+        }
+      }
+    },
+    "akamai": {
+      "techniques": [
+        "behavioral_analysis_bypass",
+        "fingerprint_spoofing",
+        "request_pattern_randomization",
+        "session_manipulation",
+        "cookie_analysis_bypass",
+        "javascript_execution_bypass",
+        "browser_automation_detection_bypass",
+        "human_behavior_simulation",
+        "request_timing_randomization",
+        "header_order_randomization"
+      ],
+      "patterns": {
+        "behavioral": {
+          "mouse_movements": [
+            "random_mouse_trajectory",
+            "human_like_mouse_movement",
+            "natural_scrolling_pattern",
+            "realistic_click_timing"
+          ],
+          "keyboard_patterns": [
+            "variable_typing_speed",
+            "natural_pause_patterns",
+            "realistic_typo_correction",
+            "human_like_keyboard_rhythm"
+          ],
+          "timing_patterns": [
+            "random_delays_between_requests",
+            "natural_browsing_rhythm",
+            "realistic_page_load_times",
+            "human_like_navigation_patterns"
+          ]
+        }
+      }
+    }
+  },
+  "ids_evasion": {
+    "snort": {
+      "techniques": [
+        "fragmentation",
+        "timing_manipulation",
+        "protocol_manipulation",
+        "payload_obfuscation",
+        "traffic_normalization",
+        "session_splitting",
+        "request_splitting",
+        "response_manipulation",
+        "header_manipulation",
+        "content_encoding"
+      ],
+      "patterns": {
+        "fragmentation": {
+          "max_fragment_size": 8,
+          "fragment_overlap": true,
+          "fragment_order_randomization": true
+        },
+        "timing": {
+          "min_delay": 100,
+          "max_delay": 5000,
+          "random_delay": true,
+          "burst_requests": false
+        }
+      }
+    },
+    "suricata": {
+      "techniques": [
+        "stream_reassembly_bypass",
+        "http_parser_bypass",
+        "tls_inspection_bypass",
+        "dns_evasion",
+        "protocol_anomaly_bypass",
+        "signature_evasion",
+        "behavioral_analysis_bypass",
+        "machine_learning_bypass",
+        "statistical_analysis_bypass",
+        "correlation_analysis_bypass"
+      ],
+      "patterns": {
+        "http_evasion": {
+          "method_manipulation": [
+            "GET",
+            "POST",
+            "PUT",
+            "DELETE",
+            "HEAD",
+            "OPTIONS",
+            "PATCH",
+            "TRACE",
+            "CONNECT"
+          ],
+          "header_manipulation": {
+            "case_variation": true,
+            "whitespace_manipulation": true,
+            "null_byte_injection": true,
+            "unicode_bypass": true
+          }
+        }
+      }
+    }
+  },
+  "protocol_manipulation": {
+    "http_methods": [
+      "GET",
+      "POST",
+      "PUT",
+      "DELETE",
+      "HEAD",
+      "OPTIONS",
+      "PATCH",
+      "TRACE",
+      "CONNECT"
+    ],
+    "http_versions": [
+      "HTTP/1.0",
+      "HTTP/1.1",
+      "HTTP/2.0"
+    ],
+    "content_types": [
+      "application/x-www-form-urlencoded",
+      "multipart/form-data",
+      "application/json",
+      "application/xml",
+      "text/plain",
+      "application/octet-stream",
+      "text/html",
+      "application/javascript"
+    ],
+    "encodings": [
+      "gzip",
+      "deflate",
+      "br",
+      "compress",
+      "identity"
+    ]
+  },
+  "timing_evasion": {
+    "delays": {
+      "min_delay": 100,
+      "max_delay": 10000,
+      "random_delay": true,
+      "progressive_delay": true,
+      "exponential_backoff": true
+    },
+    "burst_requests": {
+      "enabled": false,
+      "max_burst_size": 5,
+      "burst_interval": 1000
+    },
+    "rate_limiting": {
+      "requests_per_second": 1,
+      "requests_per_minute": 60,
+      "adaptive_rate_limiting": true
+    }
+  },
+  "encoding_layers": {
+    "base64": {
+      "enabled": true,
+      "multiple_layers": true,
+      "max_layers": 5
+    },
+    "url_encoding": {
+      "enabled": true,
+      "double_encoding": true,
+      "triple_encoding": false
+    },
+    "unicode": {
+      "enabled": true,
+      "unicode_normalization": true,
+      "unicode_escape_sequences": true
+    },
+    "hex": {
+      "enabled": true,
+      "uppercase": false,
+      "lowercase": true
+    },
+    "rot13": {
+      "enabled": true,
+      "multiple_rotations": true
+    },
+    "custom": {
+      "enabled": true,
+      "custom_algorithm": "polymorphic_encoding",
+      "key_rotation": true
+    }
+  },
+  "stealth_techniques": {
+    "request_normalization": {
+      "enabled": true,
+      "header_order_randomization": true,
+      "parameter_order_randomization": true,
+      "whitespace_normalization": true
+    },
+    "traffic_blending": {
+      "enabled": true,
+      "background_traffic_generation": true,
+      "legitimate_request_mixing": true,
+      "noise_injection": true
+    },
+    "session_manipulation": {
+      "enabled": true,
+      "session_rotation": true,
+      "cookie_manipulation": true,
+      "session_persistence": true
+    },
+    "fingerprint_spoofing": {
+      "enabled": true,
+      "browser_fingerprint_spoofing": true,
+      "os_fingerprint_spoofing": true,
+      "network_fingerprint_spoofing": true
+    }
+  }
+}

